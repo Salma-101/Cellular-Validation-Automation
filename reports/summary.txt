@@ -1,0 +1,13 @@
+CELLULAR VALIDATION SUMMARY
+==============================
+Total tests: 200
+Failed tests: 20
+ML anomalies flagged: 20
+
+Failure categories:
+- LATENCY_SPIKE: 7
+- THROUGHPUT_DEGRADATION: 7
+- LOW_SIGNAL_QUALITY: 6
+
+Note: Measurements are synthetic.
+Anomaly flags indicate unusual KPIs, not confirmed root causes.
