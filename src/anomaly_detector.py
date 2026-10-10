@@ -31,11 +31,11 @@ def detect_anomalies(data, contamination=0.10, random_state=42):
     return result, model
 
 
-def evaluate_detector(results):
+def evaluate_detector(results, prediction_column="ml_anomaly"):
     """Evaluate predictions against known injected anomalies."""
 
     y_true = results["is_injected_anomaly"].astype(bool)
-    y_pred = results["ml_anomaly"].astype(bool)
+    y_pred = results[prediction_column].astype(bool)
 
     tn, fp, fn, tp = confusion_matrix(
         y_true, y_pred, labels=[False, True]
@@ -50,3 +50,20 @@ def evaluate_detector(results):
         "recall": round(recall_score(y_true, y_pred, zero_division=0), 3),
         "f1_score": round(f1_score(y_true, y_pred, zero_division=0), 3),
     }
+
+def apply_hybrid_detection(
+    results,
+    sinr_threshold_db=2.0,
+):
+    """
+    Combine Isolation Forest predictions with an illustrative
+    low-SINR rule. The threshold is not a validated RF limit.
+    """
+    output = results.copy()
+
+    output["hybrid_anomaly"] = (
+        output["ml_anomaly"].astype(bool)
+        | (output["sinr_db"] < sinr_threshold_db)
+    )
+
+    return output

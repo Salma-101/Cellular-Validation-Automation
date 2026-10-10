@@ -13,9 +13,11 @@ Analyzing large volumes of engineering test results manually can be time-consumi
 - **Synthetic Test Data Generation:** Generates reproducible test records containing signal quality (SINR), throughput, latency, test status, and diagnostic logs.
 - **Automated Failure Triage:** Categorizes known failure patterns, assigns severity levels, and recommends diagnostic actions using transparent rules.
 - **ML-Based Anomaly Detection:** Uses Isolation Forest from scikit-learn to identify unusual KPI measurements without using failure labels during prediction.
+- **Hybrid Anomaly Detection:** Combines Isolation Forest predictions with a configurable SINR threshold rule to help identify additional low-signal anomalies.
 - **Model Evaluation:** Measures precision, recall, F1 score, and confusion-matrix counts against known injected anomalies.
+- **Multi-Seed Evaluation:** Compares Isolation Forest and hybrid detection across five independently generated synthetic datasets.
 - **Automated Reporting:** Exports detailed test results to CSV and produces a human-readable summary.
-- **Automated Testing:** Uses pytest to validate data generation, triage logic, anomaly detection, and report generation.
+- **Automated Testing:** Uses pytest to validate data generation, triage logic, anomaly detection, hybrid detection, and report generation.
 - **CI Integration:** GitHub Actions runs the automated tests on pushes and pull requests.
 
 ## Tech Stack
@@ -35,27 +37,30 @@ Synthetic Test Data
         v
 Data Processing
         |
-        +---------------------+
-        |                     |
-        v                     v
-Rule-Based Triage      KPI Anomaly Detection
-        |                     |
-        +----------+----------+
-                   |
-                   v
-          Consolidated Results
-                   |
-                   v
-          CSV + Summary Report
-                   |
-                   v
-         Automated Test Suite
+        +-------------------------+
+        |                         |
+        v                         v
+Rule-Based Triage         Isolation Forest
+        |                 Anomaly Detection
+        |                         |
+        |                 Hybrid Detection
+        |                         |
+        +------------+------------+
+                     |
+                     v
+            Consolidated Results
+                     |
+                     v
+           CSV + Summary Reports
+                     |
+                     v
+             Automated Tests
 ```
 
 ## Project Structure
 
 ```text
-cellular-test-intelligence/
+cellular-validation-automation/
 ├── .github/
 │   └── workflows/
 │       └── tests.yml
@@ -63,7 +68,8 @@ cellular-test-intelligence/
 │   └── synthetic_cellular_tests.csv
 ├── reports/
 │   ├── triage_report.csv
-│   └── summary.txt
+│   ├── summary.txt
+│   └── generalization_results.csv
 ├── src/
 │   ├── __init__.py
 │   ├── generate_data.py
@@ -73,6 +79,7 @@ cellular-test-intelligence/
 ├── tests/
 │   └── test_pipeline.py
 ├── main.py
+├── evaluate_generalization.py
 ├── requirements.txt
 ├── README.md
 └── .gitignore
@@ -83,13 +90,13 @@ cellular-test-intelligence/
 ### Prerequisites
 
 - Python 3.11 or later
-- Git (optional, for version control)
+- Git
 
 ### 1. Clone the repository
 
 ```bash
 git clone YOUR_REPOSITORY_URL
-cd cellular-test-intelligence
+cd cellular-validation-automation
 ```
 
 Replace `YOUR_REPOSITORY_URL` with your GitHub repository URL.
@@ -130,7 +137,7 @@ This generates 200 reproducible test records, including 20 deliberately injected
 python main.py
 ```
 
-The pipeline loads the data, performs rule-based triage, detects KPI anomalies, evaluates the detector, and generates reports.
+The pipeline loads the data, performs rule-based triage, detects KPI anomalies, evaluates the detectors, and generates reports.
 
 ### 6. Run automated tests
 
@@ -138,9 +145,21 @@ The pipeline loads the data, performs rule-based triage, detects KPI anomalies, 
 python -m pytest -v
 ```
 
+The test suite covers data generation, triage, anomaly detection, hybrid detection, and report generation.
+
+### 7. Evaluate generalization across synthetic datasets
+
+```bash
+python evaluate_generalization.py
+```
+
+This compares Isolation Forest and hybrid detection across five generated datasets using random seeds 100–104. Results are saved to `reports/generalization_results.csv`.
+
 ## Sample Results
 
-On the initial synthetic dataset of 200 records, the Isolation Forest detector produced the following results:
+### Initial Synthetic Dataset
+
+On the initial synthetic dataset of 200 records, Isolation Forest produced the following results:
 
 | Metric | Result |
 |---|---:|
@@ -154,46 +173,66 @@ On the initial synthetic dataset of 200 records, the Isolation Forest detector p
 | Recall | 0.90 |
 | F1 score | 0.90 |
 | Overall accuracy | 98% |
-| Automated tests passed | 4/4 |
 
-These are results from a single controlled synthetic dataset, not a benchmark of real-world cellular performance. The model flags statistical outliers; it does not independently establish the root cause of a failure.
+### Multi-Seed Evaluation
+
+Mean metrics across five independently generated synthetic datasets:
+
+| Metric | Isolation Forest | Hybrid |
+|---|---:|---:|
+| Mean precision | 0.910 | 0.916 |
+| Mean recall | 0.910 | 0.960 |
+| Mean F1 score | 0.910 | 0.937 |
+
+The hybrid detector achieved higher mean recall and F1 score in this experiment. Its performance varied across seeds, and it did not outperform Isolation Forest on every dataset.
+
+These results are based exclusively on synthetic data. They do not establish performance on real-world cellular networks or prove that the detector can identify actual RF faults.
 
 ## Output Files
 
 ### `reports/triage_report.csv`
 
-Contains the original test measurements, failure categories, severity levels, diagnostic hypotheses, recommended actions, anomaly scores, and ML anomaly predictions.
+Contains test measurements, failure categories, severity levels, diagnostic hypotheses, recommended actions, anomaly scores, and ML anomaly predictions. Hybrid predictions are included when generated by the pipeline.
 
 ### `reports/summary.txt`
 
 Contains a concise overview of test counts, failed tests, flagged anomalies, and failure-category statistics.
 
+### `reports/generalization_results.csv`
+
+Contains the precision, recall, F1 score, and false-positive and false-negative counts for both detection methods across the five evaluation seeds.
+
 ## Design Decisions
 
-- **Rule-based triage and ML are separate:** Explicit diagnostic rules provide interpretable categories, while Isolation Forest independently identifies unusual KPI combinations.
-- **Reproducibility:** A fixed random seed makes synthetic data generation repeatable.
+- **Rule-based triage and ML are separate:** Explicit diagnostic rules provide interpretable categories, while Isolation Forest identifies unusual KPI combinations.
+- **Hybrid detection:** A configurable SINR threshold is combined with ML predictions to investigate whether a simple engineering rule can improve anomaly recall.
+- **Reproducibility:** Fixed random seeds make synthetic data generation and model experiments repeatable.
 - **Evaluation against known anomalies:** Injected-anomaly labels are retained for evaluation but excluded from the model's input features.
+- **Multi-seed evaluation:** Multiple synthetic datasets provide a more informative comparison than a single run, although they do not represent real-world validation.
 - **Automated validation:** pytest checks core functionality and report generation.
 - **Lightweight implementation:** The pipeline uses a CLI instead of a web dashboard to keep the prototype focused on test automation and ML.
 
 ## Limitations and Future Work
 
-Current limitations:
+### Current Limitations
 
 - All measurements and failure scenarios are synthetic.
-- Diagnostic thresholds and recommendations are illustrative rather than validated engineering criteria.
-- The anomaly detector has only been evaluated on the generated dataset.
+- Diagnostic thresholds and recommendations are illustrative, not validated RF engineering criteria.
+- The five-seed experiment is limited in size and scope.
+- The hybrid detector has not been validated against real cellular measurements or independent real-world datasets.
 - The prototype has not been integrated with cellular test equipment or real validation infrastructure.
+- The system identifies statistical anomalies and potential failure patterns; it does not independently establish root cause.
 
-Potential extensions:
+### Potential Extensions
 
-- Parse real, appropriately anonymized engineering logs.
+- Parse real, appropriately anonymized engineering logs into structured failure categories.
 - Evaluate against larger datasets and more varied failure scenarios.
 - Investigate false positives and false negatives.
 - Add time-series analysis and risk-based test selection.
+- Explore test-log classification using NLP.
 - Integrate with real test execution systems and reporting workflows.
 - Extend CI to include data-quality checks and model-regression tests.
 
 ## Motivation
 
-This project explores the application of Python automation, statistical analysis, and machine learning to engineering test validation. It is intended as a learning prototype demonstrating failure triage, anomaly detection, reproducible experimentation, and automated software testing.
+This project explores the application of Python automation, statistical analysis, and machine learning to engineering test validation. It is a learning prototype demonstrating failure triage, anomaly detection, reproducible experimentation, and automated software testing.
